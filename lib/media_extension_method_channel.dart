@@ -11,11 +11,40 @@ class MethodChannelMediaExtension extends MediaExtensionPlatform {
   @visibleForTesting
   final methodChannel = const MethodChannel('media_extension');
 
+  final _intentActionController =
+      StreamController<MediaExtentionAction>.broadcast();
+  bool _hasMethodCallHandler = false;
+
+  void _ensureMethodCallHandler() {
+    if (_hasMethodCallHandler) {
+      return;
+    }
+    methodChannel.setMethodCallHandler((call) async {
+      if (call.method != 'getIntentAction') {
+        return;
+      }
+      _intentActionController.add(_parseIntentAction(call.arguments));
+    });
+    _hasMethodCallHandler = true;
+  }
+
+  MediaExtentionAction _parseIntentAction(dynamic args) {
+    final map = args is Map ? args : const <String, dynamic>{};
+    return MediaExtentionAction(
+      action: actionParser(map['action'] as String? ?? ''),
+      name: map['name'] as String?,
+      type: mediaParser(map['type'] as String?),
+      extension: map['extension'] as String?,
+      data: map['data'] as String?,
+    );
+  }
+
   /// This Method retrivies the platform version from native thread.
   @override
   Future<String?> getPlatformVersion() async {
-    final version =
-        await methodChannel.invokeMethod<String>('getPlatformVersion');
+    final version = await methodChannel.invokeMethod<String>(
+      'getPlatformVersion',
+    );
     return version;
   }
 
@@ -23,15 +52,16 @@ class MethodChannelMediaExtension extends MediaExtensionPlatform {
   /// from the Flutter thread to send results to apps
   /// which can handle [ACTION_ATTACH_DATA] Intent of [mimeType] `images/*`.
   @override
-  Future<bool> setAs(String uri, String mimeType,
-      {String title = 'Set as'}) async {
+  Future<bool> setAs(
+    String uri,
+    String mimeType, {
+    String title = 'Set as',
+  }) async {
     try {
-      final result =
-          await methodChannel.invokeMethod('setAs', <String, dynamic>{
-        'uri': uri,
-        'mimeType': mimeType,
-        'title': title,
-      });
+      final result = await methodChannel.invokeMethod(
+        'setAs',
+        <String, dynamic>{'uri': uri, 'mimeType': mimeType, 'title': title},
+      );
       if (result != null) return result as bool;
     } on PlatformException catch (e) {
       debugPrint(e.message);
@@ -71,12 +101,10 @@ class MethodChannelMediaExtension extends MediaExtensionPlatform {
     String title = 'Open With',
   }) async {
     try {
-      final result =
-          await methodChannel.invokeMethod('openWith', <String, dynamic>{
-        'uri': uri,
-        'mimeType': mimeType,
-        'title': title,
-      });
+      final result = await methodChannel.invokeMethod(
+        'openWith',
+        <String, dynamic>{'uri': uri, 'mimeType': mimeType, 'title': title},
+      );
       if (result != null) return result as bool;
     } on PlatformException catch (e) {
       debugPrint(e.message);
@@ -88,23 +116,15 @@ class MethodChannelMediaExtension extends MediaExtensionPlatform {
   /// and [uri] information in a [HashMap] Structure to the Flutter thread.
   @override
   Future<MediaExtentionAction> getIntentAction() async {
-    //Completer which awaits for the result from native android
-    //thread to send the IntentAction Information.
-    final Completer<MediaExtentionAction> completer =
-        Completer<MediaExtentionAction>();
-    methodChannel.setMethodCallHandler((call) async {
-      final dynamic args = call.arguments;
-      MediaExtentionAction intentAction = MediaExtentionAction(
-          action: actionParser(args['action']),
-          name: args['name'],
-          type: mediaParser(args['type']),
-          extension: args['extension'],
-          data: args['data']);
-      //Completes the Completer
-      completer.complete(intentAction);
-    });
-    //Returns the future
-    return completer.future;
+    _ensureMethodCallHandler();
+    final args = await methodChannel.invokeMethod('getIntentAction');
+    return _parseIntentAction(args);
+  }
+
+  @override
+  Stream<MediaExtentionAction> get intentActionStream {
+    _ensureMethodCallHandler();
+    return _intentActionController.stream;
   }
 
   /// This Method sends the selected Image's [uri] to the native thread.
@@ -113,9 +133,7 @@ class MethodChannelMediaExtension extends MediaExtensionPlatform {
   @override
   Future<void> setResult(String uri) async {
     try {
-      await methodChannel.invokeMethod('setResult', {
-        'uri': uri,
-      });
+      await methodChannel.invokeMethod('setResult', {'uri': uri});
     } on PlatformException catch (e) {
       debugPrint(e.message);
     }

@@ -25,7 +25,7 @@ import kotlin.collections.HashMap
 
 /// The Class which implements Activity Aware FlutterPlugin
 class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
-    PluginRegistry.ActivityResultListener {
+    PluginRegistry.ActivityResultListener, PluginRegistry.NewIntentListener {
 
     /// The MethodChannel that will the communication between Flutter and native Android
     ///
@@ -34,6 +34,7 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     private lateinit var methodChannel: MethodChannel
     private lateinit var context: Context
     private var activity: Activity? = null
+    private var activityBinding: ActivityPluginBinding? = null
     private val logTag = "EnteMediaExtensionPlugin"
 
     ///ENUM of all the possible IntentAction for a gallery app.
@@ -52,15 +53,6 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         ///Method Channel instance is created for channel [media_extension]
         methodChannel = MethodChannel(flutterPluginBinding.binaryMessenger, "media_extension")
 
-        ///To Trigger events in mainThread
-        Handler(Looper.getMainLooper()).postDelayed({
-
-            /// `getIntentAction` method is invoked 
-            /// to send data from android to flutter thread
-            val intentChecker = getIntentAction()
-            methodChannel.invokeMethod("getIntentAction", intentChecker)
-        }, 0)
-
         /// Method Channel handler which handles all the methods
         /// invoked from flutter thread
         methodChannel.setMethodCallHandler(this)
@@ -71,6 +63,9 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         when (call.method) {
             "getPlatformVersion" -> {
                 result.success("Android ${Build.VERSION.RELEASE}")
+            }
+            "getIntentAction" -> {
+                result.success(getIntentAction())
             }
             "setResult" -> {
                 setResult(call)
@@ -92,8 +87,10 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
 
 
     /// The Method is triggered by the Flutter thread with arguments containing
-    /// and [uri] of the received image of type content://xyz
-    /// and returns the base64EncodedString of it.
+    /// and [uri] of the received media of type content://xyz.
+    /// MediaStore/file image URIs are passed through directly so callers can
+    /// render them without base64 overhead. Other image content providers keep
+    /// the base64 fallback for compatibility with transient grants.
     private fun getResolvedContent(
         contentUri: Uri,
         contentType: String,
@@ -126,17 +123,31 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         if (contentType.startsWith("video")) {
             resolvedContent["data"] = contentUri.toString()
         } else if (contentType.startsWith("image")) {
-            val imageBytes = resolver.openInputStream(contentUri)?.use { contentStream ->
-                contentStream.readBytes()
-            } ?: ByteArray(0)
-            resolvedContent["data"] = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Base64.getEncoder().encodeToString(imageBytes)
+            resolvedContent["data"] = if (contentUri.canBeRenderedFromUri()) {
+                contentUri.toString()
             } else {
-                android.util.Base64.encodeToString(
-                    imageBytes,
-                    android.util.Base64.DEFAULT
-                )
+                resolver.encodeAsBase64(contentUri)
             }
+        }
+    }
+
+    private fun Uri.canBeRenderedFromUri(): Boolean {
+        return scheme == ContentResolver.SCHEME_FILE ||
+            authority == MediaStoreAuthority ||
+            authority == MediaDocumentsAuthority
+    }
+
+    private fun ContentResolver.encodeAsBase64(contentUri: Uri): String {
+        val imageBytes = openInputStream(contentUri)?.use { contentStream ->
+            contentStream.readBytes()
+        } ?: ByteArray(0)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Base64.getEncoder().encodeToString(imageBytes)
+        } else {
+            android.util.Base64.encodeToString(
+                imageBytes,
+                android.util.Base64.DEFAULT
+            )
         }
     }
 
@@ -156,8 +167,13 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
 
     /// The Method is triggered when the app is opened and it sends the [intent-action]
     /// and [uri] information in a HashMap Structure to the Flutter thread.
-    private fun getIntentAction(): HashMap<String, String> {
-        val intent: Intent? = activity?.intent
+    private fun emitIntentAction(intent: Intent) {
+        Handler(Looper.getMainLooper()).post {
+            methodChannel.invokeMethod("getIntentAction", getIntentAction(intent))
+        }
+    }
+
+    private fun getIntentAction(intent: Intent? = activity?.intent): HashMap<String, String> {
         val result = HashMap<String, String>()
         var resAction = IntentAction.valueOf("MAIN")
         if (intent != null) {
@@ -323,21 +339,43 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     /// The Method Invoked after the Plugin is attached to Flutter engine
     /// Provides the activity context of the application
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activityBinding = binding
         activity = binding.activity
         binding.addActivityResultListener(this)
+        binding.addOnNewIntentListener(this)
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
+        detachFromActivity()
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        onAttachedToActivity(binding)
     }
 
     override fun onDetachedFromActivity() {
+        detachFromActivity()
+    }
+
+    private fun detachFromActivity() {
+        activityBinding?.removeActivityResultListener(this)
+        activityBinding?.removeOnNewIntentListener(this)
+        activityBinding = null
         activity = null
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
         return true
+    }
+
+    override fun onNewIntent(intent: Intent): Boolean {
+        activity?.setIntent(intent)
+        emitIntentAction(intent)
+        return false
+    }
+
+    private companion object {
+        private const val MediaStoreAuthority = "media"
+        private const val MediaDocumentsAuthority = "com.android.providers.media.documents"
     }
 }
