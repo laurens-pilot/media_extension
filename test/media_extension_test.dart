@@ -16,8 +16,11 @@ class MockMediaExtensionPlatform
       Future.value(true);
 
   @override
-  Future<bool> openWith(String uri, String mimeType,
-          {String title = 'Open with'}) =>
+  Future<bool> openWith(
+    String uri,
+    String mimeType, {
+    String title = 'Open with',
+  }) =>
       Future.value(true);
 
   @override
@@ -29,7 +32,16 @@ class MockMediaExtensionPlatform
       Future.value(MediaExtentionAction(action: IntentAction.main));
 
   @override
+  Stream<MediaExtentionAction> get intentActionStream => const Stream.empty();
+
+  @override
   Future<void> setResult(String uri) => Future.value();
+
+  @override
+  Future<void> setResults(List<String> uris) => Future.value();
+
+  @override
+  Future<void> cancelResult() => Future.value();
 }
 
 void main() {

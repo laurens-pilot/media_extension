@@ -60,8 +60,23 @@ abstract class MediaExtensionPlatform extends PlatformInterface {
     throw UnimplementedError('platformVersion() has not been implemented.');
   }
 
+  /// abstract stream for warm intent actions received after startup.
+  Stream<MediaExtentionAction> get intentActionStream {
+    throw UnimplementedError('intentActionStream has not been implemented.');
+  }
+
   /// abstract method `setResult` method.
   Future<void> setResult(String uri) async {
+    throw UnimplementedError('platformVersion() has not been implemented.');
+  }
+
+  /// abstract method `setResults` method.
+  Future<void> setResults(List<String> uris) async {
+    throw UnimplementedError('platformVersion() has not been implemented.');
+  }
+
+  /// abstract method `cancelResult` method.
+  Future<void> cancelResult() async {
     throw UnimplementedError('platformVersion() has not been implemented.');
   }
 }

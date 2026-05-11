@@ -64,6 +64,7 @@ class MediaExtentionAction {
   final MediaType? type;
   final String? extension;
   final String? name;
+  final bool allowMultiple;
 
   MediaExtentionAction({
     this.name,
@@ -71,6 +72,7 @@ class MediaExtentionAction {
     this.extension,
     this.action,
     this.data,
+    this.allowMultiple = false,
   });
 }
 

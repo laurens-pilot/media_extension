@@ -18,6 +18,14 @@ class MediaExtension {
   Future<MediaExtentionAction> getIntentAction() =>
       MediaExtensionPlatform.instance.getIntentAction();
 
+  Stream<MediaExtentionAction> get intentActionStream =>
+      MediaExtensionPlatform.instance.intentActionStream;
+
   Future<void> setResult(String uri) =>
       MediaExtensionPlatform.instance.setResult(uri);
+
+  Future<void> setResults(List<String> uris) =>
+      MediaExtensionPlatform.instance.setResults(uris);
+
+  Future<void> cancelResult() => MediaExtensionPlatform.instance.cancelResult();
 }
