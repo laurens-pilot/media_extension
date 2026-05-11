@@ -36,6 +36,8 @@ class MethodChannelMediaExtension extends MediaExtensionPlatform {
       type: mediaParser(map['type'] as String?),
       extension: map['extension'] as String?,
       data: map['data'] as String?,
+      allowMultiple: map['allowMultiple'] == true ||
+          map['allowMultiple']?.toString() == 'true',
     );
   }
 
@@ -134,6 +136,29 @@ class MethodChannelMediaExtension extends MediaExtensionPlatform {
   Future<void> setResult(String uri) async {
     try {
       await methodChannel.invokeMethod('setResult', {'uri': uri});
+    } on PlatformException catch (e) {
+      debugPrint(e.message);
+    }
+  }
+
+  /// This Method sends selected media [uris] to the native thread.
+  /// from the Flutter thread to send results to the app
+  /// which invoked our app using [ACTION_PICK] INTENT.
+  @override
+  Future<void> setResults(List<String> uris) async {
+    try {
+      await methodChannel.invokeMethod('setResults', {'uris': uris});
+    } on PlatformException catch (e) {
+      debugPrint(e.message);
+    }
+  }
+
+  /// This Method cancels the result to the app
+  /// which invoked our app using [ACTION_PICK] INTENT.
+  @override
+  Future<void> cancelResult() async {
+    try {
+      await methodChannel.invokeMethod('cancelResult');
     } on PlatformException catch (e) {
       debugPrint(e.message);
     }

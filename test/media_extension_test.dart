@@ -20,7 +20,8 @@ class MockMediaExtensionPlatform
     String uri,
     String mimeType, {
     String title = 'Open with',
-  }) => Future.value(true);
+  }) =>
+      Future.value(true);
 
   @override
   Future<bool> setAs(String uri, String mimeType, {String title = 'Set as'}) =>
@@ -35,6 +36,12 @@ class MockMediaExtensionPlatform
 
   @override
   Future<void> setResult(String uri) => Future.value();
+
+  @override
+  Future<void> setResults(List<String> uris) => Future.value();
+
+  @override
+  Future<void> cancelResult() => Future.value();
 }
 
 void main() {

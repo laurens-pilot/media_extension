@@ -69,4 +69,14 @@ abstract class MediaExtensionPlatform extends PlatformInterface {
   Future<void> setResult(String uri) async {
     throw UnimplementedError('platformVersion() has not been implemented.');
   }
+
+  /// abstract method `setResults` method.
+  Future<void> setResults(List<String> uris) async {
+    throw UnimplementedError('platformVersion() has not been implemented.');
+  }
+
+  /// abstract method `cancelResult` method.
+  Future<void> cancelResult() async {
+    throw UnimplementedError('platformVersion() has not been implemented.');
+  }
 }

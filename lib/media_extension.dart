@@ -23,4 +23,9 @@ class MediaExtension {
 
   Future<void> setResult(String uri) =>
       MediaExtensionPlatform.instance.setResult(uri);
+
+  Future<void> setResults(List<String> uris) =>
+      MediaExtensionPlatform.instance.setResults(uris);
+
+  Future<void> cancelResult() => MediaExtensionPlatform.instance.cancelResult();
 }

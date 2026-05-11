@@ -1,6 +1,7 @@
 package io.ente.photos.media_extension
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -68,7 +69,13 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                 result.success(getIntentAction())
             }
             "setResult" -> {
-                setResult(call)
+                setResult(call, result)
+            }
+            "setResults" -> {
+                setResults(call, result)
+            }
+            "cancelResult" -> {
+                cancelResult(result)
             }
             "setAs" -> {
                 setAs(call, result)
@@ -181,9 +188,13 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             val type: String? = intent.type
             when (intent.action) {
                 Intent.ACTION_PICK -> {
+                    type?.putMediaType(result)
+                    intent.putAllowMultiple(result)
                     resAction = IntentAction.valueOf("PICK")
                 }
                 Intent.ACTION_GET_CONTENT -> {
+                    type?.putMediaType(result)
+                    intent.putAllowMultiple(result)
                     resAction = IntentAction.valueOf("PICK")
                 }
                 Intent.ACTION_EDIT -> {
@@ -215,15 +226,74 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     /// The Method is triggered by the Flutter thread with arguments containing
     /// and [uri] of the selected image and sends the image to the requested app
     /// via RESULT_ACTION Intent using Content Provider
-    private fun setResult(call: MethodCall) {
-        val arguments: Map<String, String>? = (call.arguments() as Map<String, String>?)
-        val path = arguments!!["uri"]
-        val uri = getShareableUri(context, Uri.parse(path))
+    private fun setResult(call: MethodCall, result: Result) {
+        val uri = call.argument<String>("uri")?.let { Uri.parse(it) }
+        if (uri == null) {
+            result.error("setResult-args", "missing uri", null)
+            return
+        }
+        setResultUris(listOf(uri), result)
+    }
+
+    private fun setResults(call: MethodCall, result: Result) {
+        val uriStrings = call.argument<List<String>>("uris")
+        if (uriStrings.isNullOrEmpty()) {
+            result.error("setResults-args", "missing uris", null)
+            return
+        }
+        setResultUris(uriStrings.map { Uri.parse(it) }, result)
+    }
+
+    private fun setResultUris(uris: List<Uri>, result: Result) {
+        val shareableUris = uris.mapNotNull { getShareableUri(context, it) }
+        if (shareableUris.isEmpty()) {
+            result.error("setResults-args", "no shareable uris", null)
+            return
+        }
         val intent = Intent("io.ente.RESULT_ACTION")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val uri = shareableUris.first()
         intent.data = uri
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        if (shareableUris.size > 1) {
+            val clipData = ClipData.newUri(context.contentResolver, "media", uri)
+            shareableUris.drop(1).forEach { clipData.addItem(ClipData.Item(it)) }
+            intent.clipData = clipData
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
         activity!!.setResult(Activity.RESULT_OK, intent)
+        result.success(null)
         activity!!.finish()
+    }
+
+    private fun cancelResult(result: Result) {
+        activity!!.setResult(Activity.RESULT_CANCELED)
+        result.success(null)
+        activity!!.finish()
+    }
+
+    private fun String.putMediaType(result: HashMap<String, String>) {
+        val normalized = lowercase(Locale.ROOT)
+        val mediaType = when {
+            normalized.startsWith("image/") ||
+                normalized == "vnd.android.cursor.dir/image" -> "image"
+            normalized.startsWith("video/") ||
+                normalized == "vnd.android.cursor.dir/video" -> "video"
+            else -> null
+        }
+        if (mediaType != null) {
+            result["type"] = mediaType
+        }
+        split("/", limit = 2).getOrNull(1)?.let { extension ->
+            if (extension.isNotBlank() && extension != "*") {
+                result["extension"] = extension
+            }
+        }
+    }
+
+    private fun Intent.putAllowMultiple(result: HashMap<String, String>) {
+        if (getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)) {
+            result["allowMultiple"] = "true"
+        }
     }
 
 
