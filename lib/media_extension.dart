@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:media_extension/media_extension_action_types.dart';
 import 'package:media_extension/media_extension_platform_interface.dart';
 
@@ -17,6 +19,9 @@ class MediaExtension {
 
   Future<MediaExtentionAction> getIntentAction() =>
       MediaExtensionPlatform.instance.getIntentAction();
+
+  Future<Uint8List?> readUriBytes(String uri) =>
+      MediaExtensionPlatform.instance.readUriBytes(uri);
 
   Stream<MediaExtentionAction> get intentActionStream =>
       MediaExtensionPlatform.instance.intentActionStream;

@@ -124,6 +124,23 @@ class MethodChannelMediaExtension extends MediaExtensionPlatform {
   }
 
   @override
+  Future<Uint8List?> readUriBytes(String uri) async {
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return null;
+    }
+
+    try {
+      return await methodChannel.invokeMethod<Uint8List>(
+        'readUriBytes',
+        <String, dynamic>{'uri': uri},
+      );
+    } on PlatformException catch (e) {
+      debugPrint(e.message);
+    }
+    return null;
+  }
+
+  @override
   Stream<MediaExtentionAction> get intentActionStream {
     _ensureMethodCallHandler();
     return _intentActionController.stream;

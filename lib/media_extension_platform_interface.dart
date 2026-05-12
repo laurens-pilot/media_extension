@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:media_extension/media_extension_action_types.dart';
 import 'package:media_extension/media_extension_method_channel.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -58,6 +60,11 @@ abstract class MediaExtensionPlatform extends PlatformInterface {
   /// abstract method `getIntentAction` method.
   Future<MediaExtentionAction> getIntentAction() async {
     throw UnimplementedError('platformVersion() has not been implemented.');
+  }
+
+  /// abstract method `readUriBytes` method.
+  Future<Uint8List?> readUriBytes(String uri) async {
+    throw UnimplementedError('readUriBytes() has not been implemented.');
   }
 
   /// abstract stream for warm intent actions received after startup.
