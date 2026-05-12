@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_extension/media_extension.dart';
 import 'package:media_extension/media_extension_action_types.dart';
@@ -30,6 +32,9 @@ class MockMediaExtensionPlatform
   @override
   Future<MediaExtentionAction> getIntentAction() =>
       Future.value(MediaExtentionAction(action: IntentAction.main));
+
+  @override
+  Future<Uint8List?> readUriBytes(String uri) => Future.value(Uint8List(0));
 
   @override
   Stream<MediaExtentionAction> get intentActionStream => const Stream.empty();

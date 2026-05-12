@@ -21,6 +21,9 @@ import io.flutter.plugin.common.MethodChannel.Result
 import io.flutter.plugin.common.PluginRegistry
 import java.io.*
 import java.util.*
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import kotlin.collections.HashMap
 
 
@@ -36,6 +39,8 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     private lateinit var context: Context
     private var activity: Activity? = null
     private var activityBinding: ActivityPluginBinding? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val logTag = "EnteMediaExtensionPlugin"
 
     ///ENUM of all the possible IntentAction for a gallery app.
@@ -86,12 +91,14 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
             "openWith" -> {
                 openWith(call, result)
             }
+            "readUriBytes" -> {
+                readUriBytes(call, result)
+            }
             else -> {
                 result.notImplemented()
             }
         }
     }
-
 
     /// The Method is triggered by the Flutter thread with arguments containing
     /// and [uri] of the received media of type content://xyz.
@@ -296,6 +303,65 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         }
     }
 
+    private fun readUriBytes(call: MethodCall, result: Result) {
+        val uri = call.argument<String>("uri")?.let { Uri.parse(it) }
+        if (uri == null) {
+            result.error("readUriBytes-args", "missing uri", null)
+            return
+        }
+        try {
+            ioExecutor.execute {
+                readUriBytesOnIoThread(uri, result)
+            }
+        } catch (e: RejectedExecutionException) {
+            Log.w(logTag, "read uri executor is unavailable for uri=$uri", e)
+            result.error("readUriBytes-unavailable", e.message, null)
+        }
+    }
+
+    private fun readUriBytesOnIoThread(uri: Uri, result: Result) {
+        try {
+            val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                input.readBytesWithLimit(MaxReadUriBytes)
+            }
+            if (bytes == null) {
+                mainHandler.post {
+                    result.error("readUriBytes-open", "failed to open uri", null)
+                }
+                return
+            }
+            mainHandler.post {
+                result.success(bytes)
+            }
+        } catch (e: UriTooLargeException) {
+            Log.w(logTag, "uri exceeds read limit for uri=$uri", e)
+            mainHandler.post {
+                result.error("readUriBytes-too-large", e.message, null)
+            }
+        } catch (e: Exception) {
+            Log.w(logTag, "failed to read uri bytes for uri=$uri", e)
+            mainHandler.post {
+                result.error("readUriBytes-failed", e.message, null)
+            }
+        }
+    }
+
+    private fun InputStream.readBytesWithLimit(maxBytes: Long): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var totalBytes = 0L
+        while (true) {
+            val bytesRead = read(buffer)
+            if (bytesRead == -1) {
+                return output.toByteArray()
+            }
+            if (totalBytes + bytesRead > maxBytes) {
+                throw UriTooLargeException(maxBytes)
+            }
+            output.write(buffer, 0, bytesRead)
+            totalBytes += bytesRead
+        }
+    }
 
     /// The Method is triggered by the Flutter thread with arguments containing
     /// and [uri] of the selected image and sends the image to the chosen app
@@ -404,6 +470,7 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         methodChannel.setMethodCallHandler(null)
+        ioExecutor.shutdown()
     }
 
     /// The Method Invoked after the Plugin is attached to Flutter engine
@@ -447,5 +514,9 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
     private companion object {
         private const val MediaStoreAuthority = "media"
         private const val MediaDocumentsAuthority = "com.android.providers.media.documents"
+        private const val MaxReadUriBytes = 100L * 1024L * 1024L
     }
+
+    private class UriTooLargeException(maxBytes: Long) :
+        IOException("uri content exceeds ${maxBytes / (1024L * 1024L)} MiB")
 }
