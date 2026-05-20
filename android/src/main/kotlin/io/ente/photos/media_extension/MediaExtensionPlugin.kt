@@ -111,23 +111,31 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         resolvedContent: HashMap<String, String>
     ) {
         val resolver = context.contentResolver
-        val resolvedName = resolver.query(
-            contentUri,
-            arrayOf(OpenableColumns.DISPLAY_NAME),
-            null,
-            null,
-            null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                if (nameIndex >= 0) {
-                    cursor.getString(nameIndex)
+        val resolvedName = try {
+            resolver.query(
+                contentUri,
+                arrayOf(OpenableColumns.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex >= 0) {
+                        cursor.getString(nameIndex)
+                    } else {
+                        null
+                    }
                 } else {
                     null
                 }
-            } else {
-                null
             }
+        } catch (e: IllegalArgumentException) {
+            Log.w(logTag, "failed to get display name for uri=$contentUri", e)
+            null
+        } catch (e: SecurityException) {
+            Log.w(logTag, "failed to get display name for uri=$contentUri", e)
+            null
         }
 
         resolvedContent["name"] = resolvedName ?: fallbackDisplayName(contentUri, contentType)
@@ -179,6 +187,33 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
         }
     }
 
+    private fun resolveMimeType(intent: Intent, uri: Uri): String? {
+        return intent.resolveType(context.contentResolver)
+            ?: typeFromContentResolver(uri)
+            ?: typeFromExtension(uri)
+    }
+
+    private fun typeFromContentResolver(uri: Uri): String? {
+        return try {
+            context.contentResolver.getType(uri)
+        } catch (e: IllegalArgumentException) {
+            Log.w(logTag, "failed to get content type for uri=$uri", e)
+            null
+        } catch (e: SecurityException) {
+            Log.w(logTag, "failed to get content type for uri=$uri", e)
+            null
+        }
+    }
+
+    private fun typeFromExtension(uri: Uri): String? {
+        val extension = uri.lastPathSegment
+            ?.substringAfterLast('.', missingDelimiterValue = "")
+            ?.lowercase(Locale.ROOT)
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+    }
+
     /// The Method is triggered when the app is opened and it sends the [intent-action]
     /// and [uri] information in a HashMap Structure to the Flutter thread.
     private fun emitIntentAction(intent: Intent) {
@@ -212,11 +247,12 @@ class MediaExtensionPlugin : FlutterPlugin, MethodCallHandler, ActivityAware,
                         result["uri"] = data.toString()
                         Log.i(logTag, " dataValueView=$data")
                     }
-                    if (data != null && type != null) {
+                    val resolvedType = data?.let { type ?: resolveMimeType(intent, it) }
+                    if (data != null && resolvedType != null) {
                         try {
-                            getResolvedContent(data, type, result)
+                            getResolvedContent(data, resolvedType, result)
                         } catch (e: Exception) {
-                            Log.w(logTag, "failed to resolve intent data for uri=$data type=$type", e)
+                            Log.w(logTag, "failed to resolve intent data for uri=$data type=$resolvedType", e)
                         }
                     }
                     resAction = IntentAction.valueOf("VIEW")
